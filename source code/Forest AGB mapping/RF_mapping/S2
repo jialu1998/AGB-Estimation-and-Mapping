@@ -1,0 +1,44 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var roi = ee.FeatureCollection("users/auroraxiaozz/NewEnglang/New_England");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+ Map.centerObject(roi, 8);  //review on the tuceng
+Map.addLayer(roi, {color: "red"}, "roi"); //red on the tuceng
+
+function maskS2clouds(image) {
+  var qa = image.select('QA60'); //哨兵的一个参数 ，代表云量
+   var cloudBitMask = 1 << 10;//建立变量1~10，云量小于10
+  var cirrusBitMask = 1 << 11;//建立变量1~11，卷云量在1~11之间
+    var mask = qa.bitwiseAnd(cloudBitMask).eq(0)
+          .and(qa.bitwiseAnd(cirrusBitMask).eq(0));//建立掩膜，扣除云覆盖区域
+  return image.updateMask(mask).divide(10000);//建立返回值
+}//去云函数
+
+//哨兵2数据处理
+var s2_col = ee.ImageCollection("COPERNICUS/S2");  //调用并重命名哨兵2的数据
+var s2_Mosaci=ee.ImageCollection(s2_col.filterBounds(roi)  //根据roi裁剪哨兵2的研究区
+              .filterDate("2019-04-01", "2019-09-30")//时间
+              .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE',10))//选择百分之十以下的云的影像
+              .map(maskS2clouds)//制图，调用去云函数
+              );//处理数据集
+var S2_Mosaci1= s2_Mosaci.median();//哨兵2一个月的影像取中值，合并成一张图像
+
+var S2_Mosaci3 = S2_Mosaci1.reproject('EPSG:4326',null,30);//定义投影为W84坐标系,重采样30
+var Image_1 = ee.Image(0);
+var S2_Mosaci4=S2_Mosaci3.unmask(Image_1);//去除影像中的空值，unmask是剔除的意思
+var S2_Mosaci= S2_Mosaci4.clip(roi);//哨兵2影像按照roi研究区裁剪
+var rgbVis = {
+  min: 0.0,
+  max: 0.3,
+  bands: ['B4', 'B3', 'B2'],
+};
+Map.addLayer(S2_Mosaci, rgbVis, "S2_Mosaci"); //red on the tuceng
+
+
+print(S2_Mosaci)
+Export.image.toAsset({
+  image: S2_Mosaci ,
+  description:'S2_NewEngland',
+  scale:30,
+  region: roi,
+  maxPixels:1e13
+});

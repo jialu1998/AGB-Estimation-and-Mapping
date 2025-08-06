@@ -1,0 +1,175 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var dem = ee.Image("USGS/SRTMGL1_003"),
+    roi = ee.FeatureCollection("users/auroraxiaozz/NewEnglang/New_England"),
+    S2_Mosaci = ee.Image("users/auroraxiaozz/NewEnglang/S2_NewEngland"),
+    table = ee.FeatureCollection("users/auroraxiaozz/NewEnglang/edit2/59-edit2");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+
+var Tem = ee.Image("users/zhuxiaoxiaoigsnrr/Forestheight_Global/wc2_bio_30s_tem").clip(roi);//温度
+var Pre = ee.Image("users/zhuxiaoxiaoigsnrr/Forestheight_Global/wc2_bio_30s_pre").clip(roi);//降水
+
+var csv =table.filterBounds(roi).select('PredictedA');
+print(csv)
+Map.centerObject(roi, 8);  //review on the tuceng
+
+var rgbVis = {
+  min: 0.0,
+  max: 0.3,
+  bands: ['B4', 'B3', 'B2'],
+};
+Map.addLayer(S2_Mosaci, rgbVis, "S2_Mosaci"); //red on the tuceng
+
+
+//S2 canshu
+var B1 = S2_Mosaci.select('B1');//60m
+var B2 = S2_Mosaci.select('B2');//10m,Blue
+var B3 = S2_Mosaci.select('B3');//10m,Green
+var B4 = S2_Mosaci.select('B4');//10m,Red
+var B5 = S2_Mosaci.select('B5');//2x0m,red edge1
+var B6 = S2_Mosaci.select('B6');//20m,red edge2
+var B7 = S2_Mosaci.select('B7');//20m,red edge3
+var B8 = S2_Mosaci.select('B8');//10m,NIR
+var B8A = S2_Mosaci.select('B8A');//20m,red edge4
+var B9 = S2_Mosaci.select('B9');//60m,water vapor
+var B11 = S2_Mosaci.select('B11');//20m,SWIR1(MIR)
+var B12 = S2_Mosaci.select('B12');//20m,SWIR2
+
+//1.RVI
+var rvi = S2_Mosaci.expression(
+    'NIR / R', {
+      'NIR': S2_Mosaci.select('B8'),
+      'R': S2_Mosaci.select('B4')
+}).rename(['rvi']);//计算比值植被指数；保留rvi>2的代表有植被，rvi在1附近的代表裸地
+
+//2.EVI_增强型植被指数
+var evi = S2_Mosaci.expression(
+    '2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1))', {
+      'NIR': S2_Mosaci.select('B8'),
+      'RED': S2_Mosaci.select('B4'),
+      'BLUE': S2_Mosaci.select('B2')
+}).rename(['evi']);
+
+//3.DVI_差值环境植被指数
+var dvi = S2_Mosaci.expression(
+    'NIR - RED', {
+      'NIR': S2_Mosaci.select('B8'),
+      'RED': S2_Mosaci.select('B4')
+}).rename(['dvi']);
+
+
+//4.NDVI48(只有NDVI48的分辨率是10m)
+var NDVI48 = S2_Mosaci.expression(
+    '(NIR - RED)/(NIR + RED)', {
+      'NIR': S2_Mosaci.select('B8'),
+      'RED': S2_Mosaci.select('B4')
+}).rename(['NDVI48']);//通常情况下用8波段和4波段计算NDVI
+
+//5.FDI_森林歧视指数
+var FDI = S2_Mosaci.expression(
+      'B8 - (B3 + B4)', {
+      'B8': S2_Mosaci.select('B8'),
+      'B4': S2_Mosaci.select('B4'),
+      'B3': S2_Mosaci.select('B3')
+}).rename(['FDI']);
+
+// //6.IRECI_反红边叶绿素指数
+var IRECI = S2_Mosaci.expression(
+    '(B7 - B4)/(B5/B6)', {
+      'B4': S2_Mosaci.select('B4'),
+      'B5': S2_Mosaci.select('B5'),
+      'B6': S2_Mosaci.select('B6'),
+      'B7': S2_Mosaci.select('B7')
+}).rename(['IRECI']);
+
+//7.MTCI_陆地叶绿色指数[分辨率不同]
+var MTCI = S2_Mosaci.expression(
+    '(B6- B5)/(B5 - B4)', {
+      'B6': S2_Mosaci.select('B6'),
+      'B5': S2_Mosaci.select('B5'),
+      'B4': S2_Mosaci.select('B4')
+}).rename(['MTCI']);
+
+// 8.MCARI_改良叶绿素吸收反射指数
+var MCARI = S2_Mosaci.expression(
+    '((B5 - B4) - 0.2 * (B5 - B3)) * (B5/B4)', {
+      'B3': S2_Mosaci.select('B3'),
+      'B4': S2_Mosaci.select('B4'),
+      'B5': S2_Mosaci.select('B5')
+}).rename(['MCARI']);
+
+//9.PSSRa_色素比值指数
+var PSSRa = S2_Mosaci.expression(
+    'B7/B4', {
+      'B7': S2_Mosaci.select('B7'),
+      'B4': S2_Mosaci.select('B4')
+}).rename(['PSSRa']);
+
+// //10.S2REP_红边定位 
+var S2REP = S2_Mosaci.expression(
+    '705 + 35 * ((B4 + B7)/2 - B5)/(B6 - B5)', {
+      'B4': S2_Mosaci.select('B4'),
+      'B5': S2_Mosaci.select('B5'),
+      'B6': S2_Mosaci.select('B6'),
+      'B7': S2_Mosaci.select('B7')
+}).rename(['S2REP']);
+
+//11.MNDWI_改进型归一化差值水体指数
+var MNDWI= S2_Mosaci.expression(
+    '(B3 - B11)/(B3 + B11)', {
+      'B3': S2_Mosaci.select('B3'),
+      'B11': S2_Mosaci.select('B11')
+}).rename(['MNDWI']);
+
+//12.NDWI_水体指数:(3-8)/(3+8)=(Green-NIR)/(Green+NIR)
+var NDWI= S2_Mosaci.expression(
+    '(B3 - B8)/(B3 + B8)', {
+      'B3': S2_Mosaci.select('B3'),
+      'B8': S2_Mosaci.select('B8')
+}).rename(['NDWI']);
+
+
+//13.NDBI_建筑指数:(11-8)/(11+8)
+var NDBI= S2_Mosaci.expression(
+    '(B11 - B8)/(B11 + B8)', {
+      'B8': S2_Mosaci.select('B8'),
+      'B11': S2_Mosaci.select('B11')
+}).rename(['NDBI']);
+
+// //14.SAVI_土壤调节植被指数:(NIR-Red)*(1+L)/(NIR+Red+L) 
+  // Add Soil Adjust Vegetation Index (SAVI)
+  // using L = 0.5;
+var SAVI = S2_Mosaci.expression(
+              '((B8-B4)*1.5)/(B8+B4+0.5)',{
+              'B4':S2_Mosaci.select('B4'),
+              'B8':S2_Mosaci.select('B8')
+            }).float().rename('SAVI');
+
+var DEM = dem.rename(['DEM']);//DEM
+// select('elevation').
+
+//坡度坡向，调用SRTM【换成GDEM】
+var slope = ee.Terrain.slope(dem).rename(['slope']);
+var aspect = ee.Terrain.aspect(dem).rename(['aspect']);
+
+var all= dem.addBands([ B2,B3,B4,B5,B6,B7,B8,B8A,B9,B11,B12,Tem,Pre,
+    // VV,VH,angle,
+    MNDWI,MCARI,DEM,rvi,PSSRa,NDBI,slope,S2REP,NDWI,aspect,NDVI48,dvi,IRECI,SAVI,evi,FDI,
+   MTCI]);
+
+
+var all_clip = all.clip(roi);//裁剪研究区
+Map.addLayer(all_clip, {color: "red"}, "all_clip"); //red on the tuceng
+
+print(all_clip)//输出研究区
+// Map.addLayer(all_clip,{},'all_clip')//显示在图层
+var giantReduction1 = all_clip.reduceRegions({
+  collection: csv,
+  reducer: ee.Reducer.max(),//该函数：把点和shp结合
+  scale: 30
+});
+print(giantReduction1)
+Export.table.toAsset({
+  collection:giantReduction1,
+  description: 'PRE_NewEngland59-edit2'
+  
+  });

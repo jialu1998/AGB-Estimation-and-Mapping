@@ -1,0 +1,224 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var dem = ee.Image("USGS/SRTMGL1_003"),
+    roi = ee.FeatureCollection("users/auroraxiaozz/NewEnglang/New_England"),
+    S2_Mosaci = ee.Image("users/auroraxiaozz/NewEnglang/S2_NewEngland"),
+    csv = ee.FeatureCollection("users/auroraxiaozz/NewEnglang/edit2/PRE_NewEngland59-edit2");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+
+var ICESat = (csv)
+ 
+var ICEsat1 =ICESat.filterMetadata('slope','greater_than',0).filterMetadata('B5','greater_than',0);
+var ICEsat2=ICEsat1.randomColumn();
+
+print(ICEsat2)
+
+var Tem = ee.Image("users/zhuxiaoxiaoigsnrr/Forestheight_Global/wc2_bio_30s_tem").clip(roi);//温度
+var Pre = ee.Image("users/zhuxiaoxiaoigsnrr/Forestheight_Global/wc2_bio_30s_pre").clip(roi);//降水
+ var ICEsat1 =ICESat.filterMetadata('B5','greater_than',0)
+                    .filterMetadata('b1','greater_than',0);
+var ICEsat2=ICEsat1.randomColumn();
+print(ICEsat2)
+
+
+var X = [ 'B2','B3','B4','B5','B6','B7','B8','B8A','B9','B11','B12','b1','b1_1',
+//
+'MNDWI','MCARI','DEM','aspect','rvi','NDVI48','PSSRa','NDBI','slope','S2REP','NDWI','SAVI','IRECI','dvi','evi','FDI',
+'MTCI'];
+
+Map.centerObject(roi, 8);  
+
+var B1 = S2_Mosaci.select('B1');
+var B2 = S2_Mosaci.select('B2');
+var B3 = S2_Mosaci.select('B3');
+var B4 = S2_Mosaci.select('B4');
+var B5 = S2_Mosaci.select('B5');
+var B6 = S2_Mosaci.select('B6');
+var B7 = S2_Mosaci.select('B7');
+var B8 = S2_Mosaci.select('B8');
+var B8A = S2_Mosaci.select('B8A');
+var B9 = S2_Mosaci.select('B9');
+var B11 = S2_Mosaci.select('B11');
+var B12 = S2_Mosaci.select('B12');
+
+//1.RVI
+var rvi = S2_Mosaci.expression(
+    'NIR / R', {
+      'NIR': S2_Mosaci.select('B8'),
+      'R': S2_Mosaci.select('B4')
+}).rename(['rvi']);//计算比值植被指数；保留rvi>2的代表有植被，rvi在1附近的代表裸地
+
+//2.EVI_增强型植被指数
+var evi = S2_Mosaci.expression(
+    '2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1))', {
+      'NIR': S2_Mosaci.select('B8'),
+      'RED': S2_Mosaci.select('B4'),
+      'BLUE': S2_Mosaci.select('B2')
+}).rename(['evi']);
+
+//3.DVI_差值环境植被指数
+var dvi = S2_Mosaci.expression(
+    'NIR - RED', {
+      'NIR': S2_Mosaci.select('B8'),
+      'RED': S2_Mosaci.select('B4')
+}).rename(['dvi']);
+
+
+//4.NDVI48(只有NDVI48的分辨率是10m)
+var NDVI48 = S2_Mosaci.expression(
+    '(NIR - RED)/(NIR + RED)', {
+      'NIR': S2_Mosaci.select('B8'),
+      'RED': S2_Mosaci.select('B4')
+}).rename(['NDVI48']);//通常情况下用8波段和4波段计算NDVI
+
+//5.FDI_森林歧视指数
+var FDI = S2_Mosaci.expression(
+      'B8 - (B3 + B4)', {
+      'B8': S2_Mosaci.select('B8'),
+      'B4': S2_Mosaci.select('B4'),
+      'B3': S2_Mosaci.select('B3')
+}).rename(['FDI']);
+
+// //6.IRECI_反红边叶绿素指数
+var IRECI = S2_Mosaci.expression(
+    '(B7 - B4)/(B5/B6)', {
+      'B4': S2_Mosaci.select('B4'),
+      'B5': S2_Mosaci.select('B5'),
+      'B6': S2_Mosaci.select('B6'),
+      'B7': S2_Mosaci.select('B7')
+}).rename(['IRECI']);
+
+//7.MTCI_陆地叶绿色指数[分辨率不同]
+var MTCI = S2_Mosaci.expression(
+    '(B6- B5)/(B5 - B4)', {
+      'B6': S2_Mosaci.select('B6'),
+      'B5': S2_Mosaci.select('B5'),
+      'B4': S2_Mosaci.select('B4')
+}).rename(['MTCI']);
+
+//8.MCARI_改良叶绿素吸收反射指数
+var MCARI = S2_Mosaci.expression(
+    '((B5 - B4) - 0.2 * (B5 - B3)) * (B5/B4)', {
+      'B3': S2_Mosaci.select('B3'),
+      'B4': S2_Mosaci.select('B4'),
+      'B5': S2_Mosaci.select('B5')
+}).rename(['MCARI']);
+
+//9.PSSRa_色素比值指数
+var PSSRa = S2_Mosaci.expression(
+    'B7/B4', {
+      'B7': S2_Mosaci.select('B7'),
+      'B4': S2_Mosaci.select('B4')
+}).rename(['PSSRa']);
+
+// //10.S2REP_红边定位 
+var S2REP = S2_Mosaci.expression(
+    '705 + 35 * ((B4 + B7)/2 - B5)/(B6 - B5)', {
+      'B4': S2_Mosaci.select('B4'),
+      'B5': S2_Mosaci.select('B5'),
+      'B6': S2_Mosaci.select('B6'),
+      'B7': S2_Mosaci.select('B7')
+}).rename(['S2REP']);
+
+//11.MNDWI_改进型归一化差值水体指数
+var MNDWI= S2_Mosaci.expression(
+    '(B3 - B11)/(B3 + B11)', {
+      'B3': S2_Mosaci.select('B3'),
+      'B11': S2_Mosaci.select('B11')
+}).rename(['MNDWI']);
+
+//12.NDWI_水体指数:(3-8)/(3+8)=(Green-NIR)/(Green+NIR)
+var NDWI= S2_Mosaci.expression(
+    '(B3 - B8)/(B3 + B8)', {
+      'B3': S2_Mosaci.select('B3'),
+      'B8': S2_Mosaci.select('B8')
+}).rename(['NDWI']);
+
+
+//13.NDBI_建筑指数:(11-8)/(11+8)
+var NDBI= S2_Mosaci.expression(
+    '(B11 - B8)/(B11 + B8)', {
+      'B8': S2_Mosaci.select('B8'),
+      'B11': S2_Mosaci.select('B11')
+}).rename(['NDBI']);
+
+// 14.SAVI_土壤调节植被指数:(NIR-Red)*(1+L)/(NIR+Red+L) 
+  // Add Soil Adjust Vegetation Index (SAVI)
+  // using L = 0.5;
+var SAVI = S2_Mosaci.expression(
+              '((B8-B4)*1.5)/(B8+B4+0.5)',{
+              'B4':S2_Mosaci.select('B4'),
+              'B8':S2_Mosaci.select('B8')
+            }).float().rename('SAVI');
+
+
+var DEM = dem.rename(['DEM']);//DEM
+//select('elevation').
+
+//坡度坡向，调用SRTM【换成GDEM】
+var slope = ee.Terrain.slope(dem).rename(['slope']);
+var aspect = ee.Terrain.aspect(dem).rename(['aspect']);
+
+
+var all= dem.addBands([ B2,B3,B4,B5,B6,B7,B8,B8A,B9,B11,B12,Tem,Pre,
+    // VV,VH,angle,
+    MNDWI,MCARI,DEM,aspect,rvi,NDVI48,PSSRa,NDBI,slope,S2REP,NDWI,SAVI,IRECI,dvi,evi,FDI,
+   MTCI]);
+
+var all_clip = all.clip(roi);//裁剪研究区
+print(all_clip)//输出研究区
+Map.addLayer(all_clip,{},'all_clip')
+
+// 分：训练集与实验样本与验证集 7比3
+var datacsv = ICEsat2.filterMetadata('random','less_than',0.3);
+//var validation = ICEsat2.filterMetadata('random','less_than',0.2).filterMetadata('random','not_less_than',0.1);
+var mappedReduction_ICEsat2 =  ICEsat2.filterMetadata('random','not_less_than',0.3);//70%训练，30%验证模型
+
+var Reducer_Count = ee.Reducer.count();
+var validation_Number = datacsv.reduceColumns(Reducer_Count,['PredictedA']);//删减器，计算30%有多少个   
+print(validation_Number,'validation_Number');//显示验证模型的个数
+var datacsv_Number = datacsv.reduceColumns(Reducer_Count,['PredictedA']);
+print(datacsv_Number,'datacsv_Number');//显示验证图的个数
+//导出datacsv
+
+var model= ee.Classifier.smileRandomForest(100)//随机森林设置树:ntree=100
+    .setOutputMode('REGRESSION')//回归，预测 
+    .train(mappedReduction_ICEsat2 ,'PredictedA',X);//
+var pred = all_clip.classify(model);
+print(pred)//建模
+var pred = pred.reproject('EPSG:4326',null,30);
+var result1=model.explain();
+print(result1,'result1');//模型验证结果
+
+var pred33 = datacsv.classify(model);
+print(pred33);
+
+//随机森林特征重要性排序 
+var variable_importance = ee.Feature(null, ee.Dictionary(result1).get('importance'));
+var chart =
+ui.Chart.feature.byProperty(variable_importance)
+.setChartType('ColumnChart')//返回一个表格  
+.setOptions({
+title: 'Random Forest Variable Importance',
+legend: {position: 'none'},
+hAxis: {title: 'features '},
+vAxis: {title: 'Importance'}
+});//以上都在画图 
+print(chart);
+
+Map.addLayer(pred,{},'pred_importance')
+Export.image.toDrive({
+  image:pred,
+  description:'MAPNewEngland59-edit2',
+  scale:30,
+  region: roi,
+  maxPixels:1e13
+});
+
+Export.table.toDrive({
+  collection:pred33,
+  description: 'csv_mxyz_NewEngland59-edit2'
+  });//验证模型 
+  Export.table.toDrive({
+  collection:datacsv,
+  description: 'csv_mapyz_NewEngland59-edit2'
+  });//验证图 
