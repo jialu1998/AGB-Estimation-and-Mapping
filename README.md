@@ -1,4 +1,4 @@
-# Random Forest (RF) Aboveground Biomass (AGB) Estimation
+# Random Forest–based Aboveground Biomass (AGB) Estimation
 
 This repository provides the **MATLAB implementation** used to estimate **forest aboveground biomass (AGB)** with a **Random Forest (RF)** model, as described in:
 
@@ -7,5 +7,6 @@ This repository provides the **MATLAB implementation** used to estimate **forest
 DOI: `10.1016/j.ecoinf.2025.103585` 
 
 The MATLAB source code is located in the **`code/`** folder.
+
 
 
